@@ -7,10 +7,14 @@ services:
       - "8080:8080"
     volumes:
       - hs-data:/data
-      # Auto-discovery (F3) will use the Docker socket, read-only. Uncomment when ready:
+      # Auto-discovery reads the Docker socket (read-only). Uncomment, then enable it in
+      # Customize → Auto-discovery. For tighter security use a docker-socket-proxy.
       # - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - HS_LOG_LEVEL=info
+      # Required only once you store integration credentials (encrypts them at rest):
+      # - HS_SECRET_KEY=change-me-to-a-long-passphrase
+      # - HS_POLL_INTERVAL=30s
     restart: unless-stopped
 
 volumes:

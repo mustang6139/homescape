@@ -1,21 +1,13 @@
 <script lang="ts">
-  import type { Widget, Integration } from "../../lib/types";
-  import { registry, activeIntegrations } from "../../lib/integrations.svelte";
+  import type { Widget } from "../../lib/types";
+  import { registry } from "../../lib/integrations.svelte";
   import { serviceStatus } from "../../lib/resources.svelte";
+  import { resolveServices } from "../../lib/binding";
 
   let { widget }: { widget: Widget } = $props();
 
-  // Resolve the binding: an explicit non-empty services list wins; otherwise all active
-  // integrations (the beginner-bridge default).
-  const services = $derived.by<Integration[]>(() => {
-    const ids = widget.options?.services as string[] | undefined;
-    if (ids && ids.length) {
-      return ids
-        .map((id) => registry.list.find((i) => i.id === id))
-        .filter((i): i is Integration => !!i);
-    }
-    return activeIntegrations();
-  });
+  // Resolve the binding (explicit list, or all active — see resolveServices).
+  const services = $derived(resolveServices(widget, registry.list));
 
   // Read each service's live status (may be undefined until first poll).
   const rows = $derived(

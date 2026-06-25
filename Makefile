@@ -20,7 +20,7 @@ build-web:
 
 test:
 	go test ./...
-	cd web && npm test --silent || true
+	cd web && npm test
 
 lint:
 	go vet ./...
