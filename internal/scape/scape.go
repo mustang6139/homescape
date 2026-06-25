@@ -24,6 +24,21 @@ type Layout struct {
 	Columns int `json:"columns"`
 }
 
+// Service binding convention (F3).
+//
+// Widgets never embed integration URLs or secrets — they reference integrations from the
+// instance-local registry by their stable handle (id), so a Scape stays portable and
+// shareable. Resolution rules:
+//
+//   - service-health: options.services is an array of integration ids. If non-empty, those
+//     are shown; otherwise all active integrations are shown. The canonical "all" form is
+//     options.source = "all".
+//   - single-service widgets (media-now-playing, download.queue …): options.service is one
+//     integration id (handle). Prepared now; lit up as those connectors land.
+//
+// On importing someone else's Scape these handles may be unbound; the UI surfaces that and
+// lets you wire them to your own integrations.
+
 // Widget is a single placed building block. Type-specific configuration lives in Options,
 // kept loose for now; the L2 Composer (F4) will decompose these into primitives.
 type Widget struct {
@@ -55,7 +70,7 @@ func Default() Spec {
 			{ID: "w-stats", Type: "system-stats", Column: 1, Enabled: &enabled, Title: "System",
 				Options: map[string]any{"host": "homelab-01"}},
 			{ID: "w-health", Type: "service-health", Column: 1, Enabled: &enabled, Title: "Service health",
-				Options: map[string]any{"services": []any{}}},
+				Options: map[string]any{"source": "all"}},
 			{ID: "w-clock", Type: "clock", Column: 2, Enabled: &enabled, Title: "Clock"},
 			{ID: "w-bookmarks", Type: "bookmarks", Column: 2, Enabled: &enabled, Title: "Bookmarks",
 				Options: map[string]any{"links": []any{}}},

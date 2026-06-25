@@ -58,7 +58,7 @@
         "title": { "type": "string", "maxLength": 80 },
         "options": {
           "type": "object",
-          "description": "Widget-type specific options. Kept loose so types can grow; tightened per type later.",
+          "description": "Widget-type specific options. Kept loose so types can grow. Service binding: widgets reference integrations by handle, never by URL/secret. service-health uses options.source='all' (default) or options.services=[ids]; single-service widgets use options.service=id.",
           "additionalProperties": true
         }
       }

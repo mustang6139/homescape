@@ -32,6 +32,27 @@ func TestParseRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDefaultServiceHealthBinding(t *testing.T) {
+	spec := Default()
+	var health *Widget
+	for i := range spec.Widgets {
+		if spec.Widgets[i].Type == "service-health" {
+			health = &spec.Widgets[i]
+			break
+		}
+	}
+	if health == nil {
+		t.Fatal("default spec should include a service-health widget")
+	}
+	// Beginner-bridge default: show all active integrations (no hard-coded service list).
+	if health.Options["source"] != "all" {
+		t.Errorf("service-health source = %v, want \"all\"", health.Options["source"])
+	}
+	if _, hasServices := health.Options["services"]; hasServices {
+		t.Error("default service-health must not pin an explicit services list")
+	}
+}
+
 func TestValidateRejectsBadSpec(t *testing.T) {
 	cases := map[string]string{
 		"unknown widget type": `{"version":1,"meta":{"name":"x","theme":"t","accent":"#E6A95C"},"layout":{"columns":3},"widgets":[{"id":"a","type":"nope","column":0}]}`,
