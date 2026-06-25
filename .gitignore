@@ -1,1 +1,21 @@
+# Dev-only docs (internal working material)
 dev_docs/
+
+# Build output
+/homescape
+/dist/
+web/dist/
+web/node_modules/
+
+# Local data / SQLite
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# Env
+.env
+.env.local
+
+# Editor / OS
+.DS_Store

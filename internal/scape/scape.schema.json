@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homescape.dev/schema/scape.schema.json",
+  "title": "Scape",
+  "description": "A HomeScape dashboard state: the single source of truth, shared between backend and frontend.",
+  "type": "object",
+  "required": ["version", "meta", "layout", "widgets"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Spec format version, for future migrations."
+    },
+    "meta": {
+      "type": "object",
+      "required": ["name", "theme", "accent"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "theme": { "type": "string", "minLength": 1 },
+        "accent": { "type": "string", "pattern": "^#([0-9a-fA-F]{6})$" },
+        "density": { "type": "string", "enum": ["compact", "cozy", "comfortable"], "default": "cozy" }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "required": ["columns"],
+      "additionalProperties": false,
+      "properties": {
+        "columns": { "type": "integer", "minimum": 1, "maximum": 6 }
+      }
+    },
+    "widgets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/widget" }
+    }
+  },
+  "$defs": {
+    "widget": {
+      "type": "object",
+      "required": ["id", "type", "column"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "type": {
+          "type": "string",
+          "enum": [
+            "system-stats",
+            "service-health",
+            "clock",
+            "bookmarks",
+            "media-now-playing"
+          ]
+        },
+        "column": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "enabled": { "type": "boolean", "default": true },
+        "title": { "type": "string", "maxLength": 80 },
+        "options": {
+          "type": "object",
+          "description": "Widget-type specific options. Kept loose so types can grow; tightened per type later.",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

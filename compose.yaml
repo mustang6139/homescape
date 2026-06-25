@@ -1,0 +1,17 @@
+services:
+  homescape:
+    image: homescape:dev
+    build: .
+    container_name: homescape
+    ports:
+      - "8080:8080"
+    volumes:
+      - hs-data:/data
+      # Auto-discovery (F3) will use the Docker socket, read-only. Uncomment when ready:
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - HS_LOG_LEVEL=info
+    restart: unless-stopped
+
+volumes:
+  hs-data:

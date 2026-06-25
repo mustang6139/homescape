@@ -1,0 +1,11 @@
+.git
+dev_docs/
+web/node_modules/
+web/dist/
+homescape
+*.db
+*.db-shm
+*.db-wal
+data/
+.env
+.env.local
