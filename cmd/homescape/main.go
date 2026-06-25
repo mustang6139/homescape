@@ -16,6 +16,7 @@ import (
 	homescape "github.com/MusiThang/homescape"
 	"github.com/MusiThang/homescape/internal/config"
 	"github.com/MusiThang/homescape/internal/scape"
+	"github.com/MusiThang/homescape/internal/secret"
 	"github.com/MusiThang/homescape/internal/server"
 	"github.com/MusiThang/homescape/internal/store"
 )
@@ -51,7 +52,15 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 
-	srv := server.New(log, st, homescape.WebFS())
+	// Secret vault: lazy — only required once a credential is actually stored.
+	vault := secret.New(cfg.SecretKey, st.Secrets(), st.Settings())
+	if vault.Enabled() {
+		log.Info("secret encryption enabled")
+	} else {
+		log.Info("secret encryption disabled (HS_SECRET_KEY not set)")
+	}
+
+	srv := server.New(log, st, vault, homescape.WebFS())
 
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,

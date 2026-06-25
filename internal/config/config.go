@@ -14,6 +14,7 @@ type Config struct {
 	DataDir      string // directory for the SQLite database and other state
 	DockerSocket string // path to the Docker socket (used in F3 auto-discovery)
 	LogLevel     string // debug | info | warn | error
+	SecretKey    string // HS_SECRET_KEY passphrase; required only to store/read secrets
 }
 
 // Load resolves configuration from flags first, falling back to environment
@@ -34,6 +35,7 @@ func Load(args []string) Config {
 		DataDir:      *dataDir,
 		DockerSocket: *dockerSocket,
 		LogLevel:     strings.ToLower(*logLevel),
+		SecretKey:    env("HS_SECRET_KEY", ""),
 	}
 }
 

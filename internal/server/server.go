@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/MusiThang/homescape/internal/secret"
 	"github.com/MusiThang/homescape/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -15,16 +16,18 @@ import (
 type Server struct {
 	log    *slog.Logger
 	store  *store.Store
+	vault  *secret.Vault
 	hub    *Hub
 	webFS  fs.FS // embedded built frontend (web/dist contents)
 	router http.Handler
 }
 
 // New builds a Server and its router. webFS is the embedded frontend filesystem.
-func New(log *slog.Logger, st *store.Store, webFS fs.FS) *Server {
+func New(log *slog.Logger, st *store.Store, vault *secret.Vault, webFS fs.FS) *Server {
 	s := &Server{
 		log:   log,
 		store: st,
+		vault: vault,
 		hub:   NewHub(),
 		webFS: webFS,
 	}
