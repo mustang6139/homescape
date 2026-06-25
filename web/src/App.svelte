@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { store, load, connectEvents } from "./lib/store.svelte";
+  import { store, load, listenScape } from "./lib/store.svelte";
+  import { loadResources, listenResources } from "./lib/resources.svelte";
+  import { loadRegistry, listenRegistry } from "./lib/integrations.svelte";
+  import { connect } from "./lib/events";
   import Header from "./components/Header.svelte";
   import Dashboard from "./components/Dashboard.svelte";
   import Setup from "./components/Setup.svelte";
@@ -8,9 +11,22 @@
   let editing = $state(false);
 
   onMount(() => {
+    // Register handlers before opening the stream so no early event is missed.
+    const offScape = listenScape();
+    const offResources = listenResources();
+    const offRegistry = listenRegistry();
+    const disconnect = connect();
+
     load();
-    const disconnect = connectEvents();
-    return disconnect;
+    loadResources();
+    loadRegistry();
+
+    return () => {
+      offScape();
+      offResources();
+      offRegistry();
+      disconnect();
+    };
   });
 </script>
 

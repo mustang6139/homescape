@@ -1,41 +1,59 @@
 <script lang="ts">
-  import type { Widget } from "../../lib/types";
+  import type { Widget, Integration } from "../../lib/types";
+  import { registry, activeIntegrations } from "../../lib/integrations.svelte";
+  import { serviceStatus } from "../../lib/resources.svelte";
 
   let { widget }: { widget: Widget } = $props();
 
-  // F3 will populate these from real connectors; for now read placeholders from options or
-  // fall back to a representative sample so the dashboard looks alive.
-  type Service = { name: string; ping?: number; up: boolean };
-  const services = $derived(
-    (widget.options?.services as Service[] | undefined)?.length
-      ? (widget.options!.services as Service[])
-      : [
-          { name: "Jellyfin", ping: 9, up: true },
-          { name: "Home Assistant", ping: 7, up: true },
-          { name: "Vaultwarden", ping: 14, up: true },
-          { name: "Nextcloud", ping: 212, up: true },
-          { name: "Grafana", ping: 11, up: true },
-          { name: "Immich", up: false },
-        ],
-  );
+  // Resolve the binding: an explicit non-empty services list wins; otherwise all active
+  // integrations (the beginner-bridge default).
+  const services = $derived.by<Integration[]>(() => {
+    const ids = widget.options?.services as string[] | undefined;
+    if (ids && ids.length) {
+      return ids
+        .map((id) => registry.list.find((i) => i.id === id))
+        .filter((i): i is Integration => !!i);
+    }
+    return activeIntegrations();
+  });
 
-  const upCount = $derived(services.filter((s) => s.up).length);
+  // Read each service's live status (may be undefined until first poll).
+  const rows = $derived(
+    services.map((svc) => ({ svc, status: serviceStatus(svc.id) })),
+  );
+  const upCount = $derived(rows.filter((r) => r.status?.up).length);
 </script>
 
 <div class="card">
   <div class="head">
-    <span class="kicker">Service health</span>
-    <span class="summary">{upCount} up · {services.length - upCount} down</span>
+    <span class="kicker">{widget.title ?? "Service health"}</span>
+    {#if rows.length}
+      <span class="summary">{upCount} up · {rows.length - upCount} down</span>
+    {/if}
   </div>
-  <ul>
-    {#each services as s}
-      <li>
-        <span class="dot" class:down={!s.up}></span>
-        <span class="nm">{s.name}</span>
-        <span class="ping" class:bad={!s.up}>{s.up ? `${s.ping}ms` : "down"}</span>
-      </li>
-    {/each}
-  </ul>
+
+  {#if !registry.loaded}
+    <p class="muted">Loading…</p>
+  {:else if rows.length === 0}
+    <p class="muted">No services yet. Add one in Customize → Integrations, or enable Docker discovery.</p>
+  {:else}
+    <ul>
+      {#each rows as { svc, status } (svc.id)}
+        <li>
+          <span
+            class="dot"
+            class:up={status?.up}
+            class:down={status && !status.up}
+            class:unknown={!status}
+          ></span>
+          <span class="nm" title={status?.message ?? ""}>{svc.name}</span>
+          <span class="ping" class:bad={status && !status.up}>
+            {#if !status}…{:else if status.up}{status.latencyMs}ms{:else}down{/if}
+          </span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 </div>
 
 <style>
@@ -65,13 +83,19 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
+    background: var(--faint);
+    flex-shrink: 0;
+  }
+  .dot.up {
     background: #5bd08a;
     box-shadow: 0 0 9px rgba(91, 208, 138, 0.7);
-    flex-shrink: 0;
   }
   .dot.down {
     background: #e0876f;
-    box-shadow: none;
+  }
+  .dot.unknown {
+    background: var(--faint);
+    opacity: 0.5;
   }
   .nm {
     flex: 1;
@@ -86,5 +110,9 @@
   }
   .ping.bad {
     color: #e0876f;
+  }
+  .muted {
+    color: var(--muted);
+    font-size: 13px;
   }
 </style>

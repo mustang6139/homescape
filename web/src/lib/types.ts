@@ -43,3 +43,44 @@ export interface Stats {
   uptimeSecs: number;
   collectedAt: string;
 }
+
+// --- F3: integrations, live resources, discovery ---
+
+export interface Integration {
+  id: string;
+  type: string;
+  name: string;
+  baseUrl: string;
+  group: string;
+  icon: string;
+  source: "manual" | "discovery";
+  status: "pending" | "active" | "hidden" | "stale";
+  hasSecret: boolean;
+}
+
+export interface ServiceStatus {
+  up: boolean;
+  latencyMs: number;
+  version?: string;
+  message?: string;
+}
+
+export interface ResourceUpdate {
+  integrationId: string;
+  kind: string;
+  data: unknown;
+  at: string;
+}
+
+export interface TestResult {
+  ok: boolean;
+  version?: string;
+  message: string;
+  latencyMs: number;
+}
+
+export interface DiscoverySettings {
+  enabled: boolean;
+  mode: "review" | "auto";
+  available?: boolean;
+}

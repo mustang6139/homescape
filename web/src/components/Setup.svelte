@@ -1,8 +1,18 @@
 <script lang="ts">
   import { dndzone } from "svelte-dnd-action";
-  import type { Spec, Widget } from "../lib/types";
+  import type { Spec, Widget, TestResult } from "../lib/types";
   import { store, patch, save } from "../lib/store.svelte";
   import { THEMES } from "../lib/themes";
+  import { registry, loadRegistry } from "../lib/integrations.svelte";
+  import { serviceStatus } from "../lib/resources.svelte";
+  import {
+    createIntegration,
+    deleteIntegration,
+    testIntegration,
+    saveDiscoverySettings,
+    acceptDiscovered,
+    hideDiscovered,
+  } from "../lib/api";
 
   let { onClose }: { onClose: () => void } = $props();
 
@@ -75,6 +85,58 @@
     const w = next.widgets.find((x) => x.id === id);
     if (w) w.enabled = w.enabled === false ? true : false;
     save(next);
+  }
+
+  // --- Integrations ---
+  let form = $state({ name: "", baseUrl: "" });
+  let testState = $state<{ pending: boolean; result?: TestResult; error?: string }>({
+    pending: false,
+  });
+  let formError = $state("");
+
+  async function runTest() {
+    testState = { pending: true };
+    try {
+      const result = await testIntegration({ type: "http-health", baseUrl: form.baseUrl });
+      testState = { pending: false, result };
+    } catch (e) {
+      testState = { pending: false, error: String(e) };
+    }
+  }
+
+  async function addIntegration() {
+    formError = "";
+    if (!form.name.trim()) {
+      formError = "Name is required";
+      return;
+    }
+    try {
+      await createIntegration({ type: "http-health", name: form.name, baseUrl: form.baseUrl });
+      form = { name: "", baseUrl: "" };
+      testState = { pending: false };
+      await loadRegistry();
+    } catch (e) {
+      formError = String(e);
+    }
+  }
+
+  async function removeIntegration(id: string) {
+    await deleteIntegration(id);
+    await loadRegistry();
+  }
+
+  // --- Auto-discovery ---
+  async function setDiscovery(enabled: boolean, mode: string) {
+    await saveDiscoverySettings({ enabled, mode: mode as "review" | "auto" });
+    await loadRegistry();
+  }
+  async function accept(id: string) {
+    await acceptDiscovered(id);
+    await loadRegistry();
+  }
+  async function hide(id: string) {
+    await hideDiscovered(id);
+    await loadRegistry();
   }
 </script>
 
@@ -160,10 +222,101 @@
             </div>
           {/each}
         </div>
+      {:else if active === "Integrations"}
+        <h3>Your services</h3>
+        {#if registry.list.length === 0}
+          <p class="hint">No integrations yet. Add one below or enable Docker discovery.</p>
+        {:else}
+          <ul class="ilist">
+            {#each registry.list as it (it.id)}
+              {@const st = serviceStatus(it.id)}
+              <li>
+                <span class="dot" class:up={st?.up} class:down={st && !st.up}></span>
+                <span class="iname">{it.name}</span>
+                <span class="ibadge">{it.status}</span>
+                {#if it.source === "discovery"}<span class="ibadge disc">auto</span>{/if}
+                <button class="del" onclick={() => removeIntegration(it.id)} aria-label="Delete">✕</button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+
+        <h3>Add a service (HTTP health)</h3>
+        <div class="addform">
+          <input placeholder="Name (e.g. Jellyfin)" bind:value={form.name} />
+          <input placeholder="URL (e.g. http://jellyfin:8096)" bind:value={form.baseUrl} />
+          <div class="actions">
+            <button class="ghost" onclick={runTest} disabled={testState.pending || !form.baseUrl}>
+              {testState.pending ? "Testing…" : "Test connection"}
+            </button>
+            <button class="primary" onclick={addIntegration}>Add</button>
+          </div>
+          {#if testState.result}
+            <p class="testres" class:ok={testState.result.ok}>
+              {testState.result.ok ? "✓" : "✕"}
+              {testState.result.message}{testState.result.latencyMs ? ` · ${testState.result.latencyMs}ms` : ""}
+            </p>
+          {:else if testState.error}
+            <p class="testres">✕ {testState.error}</p>
+          {/if}
+          {#if formError}<p class="testres">{formError}</p>{/if}
+        </div>
+        <p class="hint">Keys stay on your server. Encrypted at rest when HS_SECRET_KEY is set.</p>
+      {:else if active === "Auto-discovery"}
+        {#if !registry.discovery.available}
+          <p class="hint">
+            The Docker socket isn't mounted, so discovery is unavailable. Mount it read-only:
+            <code>/var/run/docker.sock:/var/run/docker.sock:ro</code>
+          </p>
+        {/if}
+        <h3>Docker discovery</h3>
+        <label class="toggle">
+          <input
+            type="checkbox"
+            checked={registry.discovery.enabled}
+            disabled={!registry.discovery.available}
+            onchange={(e) => setDiscovery(e.currentTarget.checked, registry.discovery.mode)}
+          />
+          Watch the Docker socket for labelled containers
+        </label>
+
+        <h3>When a new container is found</h3>
+        <div class="seg">
+          {#each ["review", "auto"] as m}
+            <button
+              class:sel={registry.discovery.mode === m}
+              disabled={!registry.discovery.available}
+              onclick={() => setDiscovery(registry.discovery.enabled, m)}
+            >
+              {m === "review" ? "Review first" : "Add automatically"}
+            </button>
+          {/each}
+        </div>
+
+        {#if registry.pending.length}
+          <h3>Pending review ({registry.pending.length})</h3>
+          <ul class="ilist">
+            {#each registry.pending as it (it.id)}
+              <li>
+                <span class="iname">{it.name}</span>
+                {#if it.group}<span class="ibadge">{it.group}</span>{/if}
+                <button class="ghost sm" onclick={() => accept(it.id)}>Add</button>
+                <button class="del" onclick={() => hide(it.id)} aria-label="Hide">✕</button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+
+        <h3>Labels</h3>
+        <p class="hint">
+          Label a container with <code>homescape.enable=true</code> to surface it. Optional:
+          <code>homescape.name</code>, <code>homescape.group</code>, <code>homescape.url</code>
+          (enables HTTP health checks), <code>homescape.icon</code>.
+        </p>
       {:else}
         <div class="placeholder">
           <p>“{active}” comes in a later phase.</p>
-          <span class="kicker">F3 integrations · F5 profiles · F6 scapes</span>
+          <span class="kicker">F5 profiles · F6 scapes</span>
         </div>
       {/if}
     </div>
@@ -374,5 +527,141 @@
   .placeholder {
     color: var(--muted);
     padding: 30px 4px;
+  }
+
+  /* Integrations + discovery */
+  .ilist {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .ilist li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  .iname {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ibadge {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    padding: 2px 6px;
+  }
+  .ibadge.disc {
+    color: var(--teal);
+    border-color: color-mix(in srgb, var(--teal) 30%, transparent);
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--faint);
+    flex-shrink: 0;
+  }
+  .dot.up {
+    background: #5bd08a;
+    box-shadow: 0 0 8px rgba(91, 208, 138, 0.7);
+  }
+  .dot.down {
+    background: #e0876f;
+  }
+  .del {
+    background: transparent;
+    border: none;
+    color: var(--faint);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 6px;
+  }
+  .del:hover {
+    color: #e0876f;
+  }
+  .addform {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .addform input {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--card-border);
+    border-radius: 9px;
+    padding: 9px 11px;
+    color: var(--ink);
+    font-size: 13px;
+    outline: none;
+  }
+  .addform input:focus {
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  }
+  .actions {
+    display: flex;
+    gap: 8px;
+  }
+  .ghost {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--card-border);
+    color: var(--ink);
+    border-radius: 9px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .ghost.sm {
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  .ghost:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .primary {
+    background: var(--accent);
+    color: #241a0c;
+    border: none;
+    border-radius: 9px;
+    padding: 8px 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .testres {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .testres.ok {
+    color: #5bd08a;
+  }
+  .toggle {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 13.5px;
+    cursor: pointer;
+  }
+  code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11.5px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--card-border);
+    border-radius: 5px;
+    padding: 1px 5px;
   }
 </style>
