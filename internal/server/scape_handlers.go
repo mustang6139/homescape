@@ -13,9 +13,9 @@ const maxSpecBytes = 1 << 20 // 1 MiB is plenty for a spec
 
 // handleGetScape returns the active Scape spec as raw JSON.
 func (s *Server) handleGetScape(w http.ResponseWriter, _ *http.Request) {
-	raw, err := s.store.Scapes().ActiveSpec()
+	raw, err := s.Store.Scapes().ActiveSpec()
 	if err != nil {
-		s.log.Error("get active scape", "err", err)
+		s.Log.Error("get active scape", "err", err)
 		writeError(w, http.StatusInternalServerError, "could not load scape")
 		return
 	}
@@ -33,12 +33,12 @@ func (s *Server) handlePutScape(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	if err := s.store.Scapes().SaveActive(body); err != nil {
-		s.log.Error("save scape", "err", err)
+	if err := s.Store.Scapes().SaveActive(body); err != nil {
+		s.Log.Error("save scape", "err", err)
 		writeError(w, http.StatusInternalServerError, "could not save scape")
 		return
 	}
-	s.hub.Broadcast(Event{Type: "scape.updated", Data: json.RawMessage(body)})
+	s.Hub.Broadcast(Event{Type: "scape.updated", Data: json.RawMessage(body)})
 	writeRawJSON(w, http.StatusOK, body)
 }
 
@@ -56,7 +56,7 @@ func (s *Server) handlePatchScape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentRaw, err := s.store.Scapes().ActiveSpec()
+	currentRaw, err := s.Store.Scapes().ActiveSpec()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load scape")
 		return
@@ -77,12 +77,12 @@ func (s *Server) handlePatchScape(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("patch produced invalid spec: %v", err))
 		return
 	}
-	if err := s.store.Scapes().SaveActive(mergedRaw); err != nil {
-		s.log.Error("save scape", "err", err)
+	if err := s.Store.Scapes().SaveActive(mergedRaw); err != nil {
+		s.Log.Error("save scape", "err", err)
 		writeError(w, http.StatusInternalServerError, "could not save scape")
 		return
 	}
-	s.hub.Broadcast(Event{Type: "scape.updated", Data: json.RawMessage(mergedRaw)})
+	s.Hub.Broadcast(Event{Type: "scape.updated", Data: json.RawMessage(mergedRaw)})
 	writeRawJSON(w, http.StatusOK, mergedRaw)
 }
 
@@ -117,8 +117,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	ch := s.hub.subscribe()
-	defer s.hub.unsubscribe(ch)
+	ch := s.Hub.subscribe()
+	defer s.Hub.unsubscribe(ch)
 
 	// Initial comment so the client knows the stream is open.
 	fmt.Fprint(w, ": connected\n\n")

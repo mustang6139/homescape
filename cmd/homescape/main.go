@@ -90,12 +90,24 @@ func run(cfg config.Config, log *slog.Logger) error {
 		hub.Broadcast(server.Event{Type: "resource.updated", Data: u})
 	}, log)
 
-	// A registry change (discovery) should trigger an immediate poll refresh.
+	// A registry change (discovery) refreshes live data and tells clients to re-fetch.
 	if disco != nil {
-		disco.SetOnChange(func() { go poller.Refresh(ctx) })
+		disco.SetOnChange(func() {
+			go poller.Refresh(ctx)
+			hub.Broadcast(server.Event{Type: "discovery.changed"})
+		})
 	}
 
-	srv := server.New(log, st, vault, hub, homescape.WebFS())
+	srv := server.New(server.Deps{
+		Log:       log,
+		Store:     st,
+		Vault:     vault,
+		Registry:  registry,
+		Poller:    poller,
+		Discovery: disco,
+		Hub:       hub,
+		WebFS:     homescape.WebFS(),
+	})
 
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,

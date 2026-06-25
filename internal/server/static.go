@@ -10,7 +10,7 @@ import (
 // spaHandler serves the embedded frontend, falling back to index.html for client-side
 // routes (anything that isn't an existing asset and isn't an /api path).
 func (s *Server) spaHandler() http.Handler {
-	fileServer := http.FileServer(http.FS(s.webFS))
+	fileServer := http.FileServer(http.FS(s.WebFS))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upath := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
@@ -18,14 +18,14 @@ func (s *Server) spaHandler() http.Handler {
 			upath = "index.html"
 		}
 
-		if f, err := s.webFS.Open(upath); err == nil {
+		if f, err := s.WebFS.Open(upath); err == nil {
 			_ = f.Close()
 			fileServer.ServeHTTP(w, r)
 			return
 		}
 
 		// Unknown path → serve index.html so the SPA router can handle it.
-		serveIndex(w, r, s.webFS)
+		serveIndex(w, r, s.WebFS)
 	})
 }
 

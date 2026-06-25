@@ -121,6 +121,54 @@ func (r *IntegrationRepo) SetStatus(id, status string) error {
 	return nil
 }
 
+// GenerateID derives a stable, unique handle from a display name (e.g. "Sonarr Main" →
+// "sonarr-main", appending a counter on collision).
+func (r *IntegrationRepo) GenerateID(name string) (string, error) {
+	base := slugify(name)
+	if base == "" {
+		base = "service"
+	}
+	candidate := base
+	for i := 2; ; i++ {
+		_, err := r.Get(candidate)
+		if errors.Is(err, ErrNotFound) {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		candidate = fmt.Sprintf("%s-%d", base, i)
+	}
+}
+
+func slugify(s string) string {
+	var b []rune
+	prevDash := false
+	for _, ch := range s {
+		switch {
+		case (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9'):
+			b = append(b, ch)
+			prevDash = false
+		case ch >= 'A' && ch <= 'Z':
+			b = append(b, ch+('a'-'A'))
+			prevDash = false
+		default:
+			if !prevDash {
+				b = append(b, '-')
+				prevDash = true
+			}
+		}
+	}
+	out := string(b)
+	for len(out) > 0 && out[0] == '-' {
+		out = out[1:]
+	}
+	for len(out) > 0 && out[len(out)-1] == '-' {
+		out = out[:len(out)-1]
+	}
+	return out
+}
+
 // Delete removes an integration by id.
 func (r *IntegrationRepo) Delete(id string) error {
 	res, err := r.db.Exec(`DELETE FROM integrations WHERE id = ?`, id)
