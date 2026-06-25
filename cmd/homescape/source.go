@@ -26,7 +26,11 @@ func (s *integrationSource) ActiveTargets() ([]connectors.Target, error) {
 		if it.Status != "active" {
 			continue
 		}
-		cfg := connectors.Config{BaseURL: it.BaseURL}
+		cfg := connectors.Config{
+			BaseURL: it.BaseURL,
+			// docker-status resolves live state from the discovery key.
+			Options: map[string]any{"key": it.DiscoveryKey},
+		}
 		if it.SecretRef != "" {
 			plain, err := s.vault.Open(it.SecretRef)
 			if err != nil {
