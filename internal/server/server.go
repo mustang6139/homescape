@@ -22,13 +22,14 @@ type Server struct {
 	router http.Handler
 }
 
-// New builds a Server and its router. webFS is the embedded frontend filesystem.
-func New(log *slog.Logger, st *store.Store, vault *secret.Vault, webFS fs.FS) *Server {
+// New builds a Server and its router. The hub is provided so other subsystems (e.g. the
+// poller) can broadcast on the same SSE channel. webFS is the embedded frontend filesystem.
+func New(log *slog.Logger, st *store.Store, vault *secret.Vault, hub *Hub, webFS fs.FS) *Server {
 	s := &Server{
 		log:   log,
 		store: st,
 		vault: vault,
-		hub:   NewHub(),
+		hub:   hub,
 		webFS: webFS,
 	}
 	s.router = s.routes()

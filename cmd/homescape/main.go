@@ -15,6 +15,7 @@ import (
 
 	homescape "github.com/MusiThang/homescape"
 	"github.com/MusiThang/homescape/internal/config"
+	"github.com/MusiThang/homescape/internal/connectors"
 	"github.com/MusiThang/homescape/internal/scape"
 	"github.com/MusiThang/homescape/internal/secret"
 	"github.com/MusiThang/homescape/internal/server"
@@ -60,7 +61,16 @@ func run(cfg config.Config, log *slog.Logger) error {
 		log.Info("secret encryption disabled (HS_SECRET_KEY not set)")
 	}
 
-	srv := server.New(log, st, vault, homescape.WebFS())
+	// Connector layer: registry of available connectors + a poller that fetches active
+	// integrations and broadcasts resource updates over the shared SSE hub.
+	registry := connectors.NewRegistry(connectors.NewHTTPHealth())
+	hub := server.NewHub()
+	src := &integrationSource{store: st, vault: vault, log: log}
+	poller := connectors.NewPoller(registry, src, cfg.PollInterval, func(u connectors.ResourceUpdate) {
+		hub.Broadcast(server.Event{Type: "resource.updated", Data: u})
+	}, log)
+
+	srv := server.New(log, st, vault, hub, homescape.WebFS())
 
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
@@ -71,6 +81,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 	// Graceful shutdown on SIGTERM/SIGINT — important inside containers.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	go poller.Run(ctx)
 
 	go func() {
 		log.Info("homescape listening", "addr", cfg.Addr, "data", cfg.DataDir)
