@@ -3,6 +3,7 @@
   import { store, load, listenScape } from "./lib/store.svelte";
   import { loadResources, listenResources } from "./lib/resources.svelte";
   import { loadRegistry, listenRegistry } from "./lib/integrations.svelte";
+  import { startStats } from "./lib/stats.svelte";
   import { connect } from "./lib/events";
   import Header from "./components/Header.svelte";
   import Dashboard from "./components/Dashboard.svelte";
@@ -20,12 +21,14 @@
     load();
     loadResources();
     loadRegistry();
+    const stopStats = startStats();
 
     return () => {
       offScape();
       offResources();
       offRegistry();
       disconnect();
+      stopStats();
     };
   });
 </script>
