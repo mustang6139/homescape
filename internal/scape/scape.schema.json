@@ -50,7 +50,8 @@
             "service-health",
             "clock",
             "bookmarks",
-            "media-now-playing"
+            "media-now-playing",
+            "composed"
           ]
         },
         "column": { "type": "integer", "minimum": 0, "maximum": 5 },

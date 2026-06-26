@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homescape.dev/schema/composed.schema.json",
+  "title": "ComposedWidgetOptions",
+  "description": "Options for a widget of type 'composed': a data source bound into a layout tree of primitives. Fully declarative and sandboxed — no expressions, no code.",
+  "type": "object",
+  "required": ["source", "view"],
+  "additionalProperties": false,
+  "properties": {
+    "source": { "$ref": "#/$defs/source" },
+    "view": { "$ref": "#/$defs/node" }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["resource", "host", "services", "static"] },
+        "resource": { "type": "string", "description": "for kind=resource: '<integration-handle>|<resource.kind>'" },
+        "data": { "description": "for kind=static: embedded literal data" }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["el"],
+      "additionalProperties": false,
+      "properties": {
+        "el": {
+          "enum": ["stack", "row", "text", "icon", "badge", "bar", "list", "link", "divider", "image"]
+        },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "bind": { "type": "string", "description": "dot-path into the source data" },
+        "text": { "type": "string", "description": "static literal text" },
+        "fmt": { "enum": ["ms", "percent", "bytes", "duration", "round", "relTime", "text"] },
+        "map": {
+          "type": "object",
+          "description": "static value→string lookup (e.g. bool → icon/color token)",
+          "additionalProperties": { "type": "string" }
+        },
+        "of": { "type": "string", "description": "for el=list: dot-path to a collection field" },
+        "item": { "$ref": "#/$defs/node" },
+        "value": { "type": ["string", "number"], "description": "for el=bar: 0..max value or field path" },
+        "max": { "type": ["string", "number"] },
+        "href": { "type": "string", "description": "for el=link" },
+        "style": { "$ref": "#/$defs/style" }
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "color": { "enum": ["accent", "muted", "up", "down", "ink", "teal", "faint"] },
+        "size": { "enum": ["sm", "md", "lg"] },
+        "weight": { "enum": ["400", "500", "600", "700"] }
+      }
+    }
+  }
+}
