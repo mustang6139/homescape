@@ -166,8 +166,11 @@
     if (!selectedWidgetId || dirty) return;
     const w = spec.widgets.find((x) => x.id === selectedWidgetId);
     if (w) {
-      draftW = structuredClone($state.snapshot(w));
-      jsonText = JSON.stringify(draftW, null, 2);
+      // Stringify the plain snapshot, NOT draftW: reading the reactive draftW proxy here
+      // would make this effect depend on the very state it writes → infinite loop.
+      const snap = structuredClone($state.snapshot(w));
+      draftW = snap;
+      jsonText = JSON.stringify(snap, null, 2);
     }
   });
 
