@@ -9,6 +9,7 @@
   import { fieldsFor } from "../lib/compose/introspect";
   import TreeEditor from "./compose/TreeEditor.svelte";
   import Composed from "./compose/Composed.svelte";
+  import { PRESETS, type Preset } from "../lib/compose/presets";
   import {
     createIntegration,
     deleteIntegration,
@@ -211,18 +212,16 @@
     if (selectedWidgetId) selectWidget(selectedWidgetId);
   }
 
-  function addComposed() {
-    const id = "composed-" + Math.random().toString(36).slice(2, 7);
+  function addPreset(p: Preset) {
+    const base = p.id === "blank" ? "composed" : p.id;
+    const id = base + "-" + Math.random().toString(36).slice(2, 5);
     const next: Spec = structuredClone($state.snapshot(spec));
     next.widgets.push({
       id,
       type: "composed",
       column: 0,
-      title: "New widget",
-      options: {
-        source: { kind: "host" },
-        view: { el: "stack", children: [{ el: "text", text: "Hello" }] },
-      },
+      title: p.title,
+      options: structuredClone(p.options) as Record<string, unknown>,
     });
     save(next).then(() => selectWidget(id));
   }
@@ -368,10 +367,19 @@
             </li>
           {/each}
         </ul>
-        <button class="ghost" onclick={addComposed}>＋ Add composed widget</button>
+        <div class="presetbar">
+          <span class="kicker">Add composed widget</span>
+          {#each PRESETS as p (p.id)}
+            <button class="ghost sm" title={p.description} onclick={() => addPreset(p)}>＋ {p.name}</button>
+          {/each}
+        </div>
 
         {#if draftW}
           {#if draftW.type === "composed"}
+            <p class="hint">
+              Compose from primitives: pick a data source, add elements, and bind them to its
+              fields. It's all declarative and shareable — no code, no config files.
+            </p>
             <h3>Data source</h3>
             <div class="seg">
               {#each ["resource", "host", "services", "static"] as k}
@@ -907,6 +915,13 @@
   }
   .jsoned:focus {
     border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  }
+  .presetbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
   }
   .preview {
     border: 1px dashed var(--card-border);
