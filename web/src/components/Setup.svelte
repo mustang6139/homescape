@@ -5,6 +5,8 @@
   import { THEMES } from "../lib/themes";
   import { registry, loadRegistry } from "../lib/integrations.svelte";
   import { serviceStatus } from "../lib/resources.svelte";
+  import { resolveSource, type ComposedSource } from "../lib/compose/source";
+  import { fieldsFor } from "../lib/compose/introspect";
   import {
     createIntegration,
     deleteIntegration,
@@ -228,6 +230,47 @@
       draft = "";
     }
   }
+
+  // --- Composer: data source + field introspection (for composed widgets) ---
+  const composedSource = $derived(
+    selectedWidget?.type === "composed"
+      ? (selectedWidget.options?.source as ComposedSource | undefined)
+      : undefined,
+  );
+  const liveSample = $derived(composedSource ? resolveSource(composedSource) : undefined);
+  const fields = $derived(composedSource ? fieldsFor(composedSource, liveSample) : []);
+
+  const resourceId = $derived(
+    composedSource?.kind === "resource" ? (composedSource.resource ?? "").split("|")[0] : "",
+  );
+  const resourceKinds = ["service.status"]; // extends as connectors expose more
+
+  function updateSource(source: ComposedSource) {
+    if (!selectedWidgetId) return;
+    const next: Spec = structuredClone($state.snapshot(spec));
+    const w = next.widgets.find((x) => x.id === selectedWidgetId);
+    if (!w) return;
+    w.options = { ...(w.options ?? {}), source };
+    save(next);
+  }
+
+  function setSourceKind(kind: string) {
+    if (kind === "resource") updateSource({ kind: "resource", resource: "" });
+    else if (kind === "static") updateSource({ kind: "static", data: {} });
+    else updateSource({ kind: kind as ComposedSource["kind"] });
+  }
+
+  function setResource(id: string) {
+    updateSource({ kind: "resource", resource: `${id}|service.status` });
+  }
+
+  function copyPath(p: string) {
+    try {
+      navigator.clipboard?.writeText(p);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
 </script>
 
 <aside class="drawer">
@@ -328,6 +371,36 @@
         <button class="ghost" onclick={addComposed}>＋ Add composed widget</button>
 
         {#if selectedWidget}
+          {#if selectedWidget.type === "composed"}
+            <h3>Data source</h3>
+            <div class="seg">
+              {#each ["resource", "host", "services", "static"] as k}
+                <button class:sel={composedSource?.kind === k} onclick={() => setSourceKind(k)}>{k}</button>
+              {/each}
+            </div>
+            {#if composedSource?.kind === "resource"}
+              <select class="src-select" value={resourceId} onchange={(e) => setResource(e.currentTarget.value)}>
+                <option value="" disabled selected={resourceId === ""}>Choose a service…</option>
+                {#each registry.list as it (it.id)}
+                  <option value={it.id}>{it.name} ({resourceKinds[0]})</option>
+                {/each}
+              </select>
+            {/if}
+
+            <h3>Available fields <span class="kicker">click to copy a path</span></h3>
+            {#if fields.length}
+              <div class="fields">
+                {#each fields as f (f.path)}
+                  <button class="field" onclick={() => copyPath(f.path)}>
+                    <span class="fpath">{f.path}</span><span class="ftype">{f.type}</span>
+                  </button>
+                {/each}
+              </div>
+            {:else}
+              <p class="hint">No fields — pick a source (and add a service for “resource”).</p>
+            {/if}
+          {/if}
+
           <h3>Edit as JSON <span class="kicker">live · no config files</span></h3>
           <textarea
             class="jsoned"
@@ -828,5 +901,42 @@
   }
   .jsoned:focus {
     border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  }
+  .src-select {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--card-border);
+    border-radius: 9px;
+    padding: 9px 11px;
+    color: var(--ink);
+    font-size: 13px;
+    margin-top: 8px;
+  }
+  .fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .field {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 5px 9px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--ink);
+  }
+  .field:hover {
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  }
+  .fpath {
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .ftype {
+    font-size: 10px;
+    color: var(--faint);
   }
 </style>
