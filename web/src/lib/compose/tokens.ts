@@ -19,6 +19,11 @@ export interface StyleTokens {
   weight?: string;
 }
 
+// colorVar resolves a color token to its CSS value (or undefined if unknown).
+export function colorVar(token: string | undefined): string | undefined {
+  return token ? COLORS[token] : undefined;
+}
+
 // styleToCss turns style tokens into an inline style string.
 export function styleToCss(style: StyleTokens | undefined): string {
   if (!style) return "";

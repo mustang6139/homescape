@@ -7,6 +7,8 @@
   import { serviceStatus } from "../lib/resources.svelte";
   import { resolveSource, type ComposedSource } from "../lib/compose/source";
   import { fieldsFor } from "../lib/compose/introspect";
+  import TreeEditor from "./compose/TreeEditor.svelte";
+  import Composed from "./compose/Composed.svelte";
   import {
     createIntegration,
     deleteIntegration,
@@ -141,67 +143,71 @@
     await loadRegistry();
   }
 
-  // --- Widgets / L3 escape hatch (edit a widget as JSON) ---
+  // --- Widgets / Composer (draft model: edit a widget, commit on Save) ---
   let selectedWidgetId = $state<string | null>(null);
-  let draft = $state("");
-  let draftDirty = $state(false);
-  let draftError = $state("");
-
-  const selectedWidget = $derived(spec.widgets.find((w) => w.id === selectedWidgetId) ?? null);
+  let draftW = $state<any>(null); // canonical widget draft (object)
+  let jsonText = $state(""); // editable JSON serialisation (round-trips with draftW)
+  let jsonError = $state("");
+  let dirty = $state(false);
 
   function selectWidget(id: string) {
     selectedWidgetId = id;
     const w = spec.widgets.find((x) => x.id === id);
-    draft = w ? JSON.stringify($state.snapshot(w), null, 2) : "";
-    draftDirty = false;
-    draftError = "";
+    draftW = w ? structuredClone($state.snapshot(w)) : null;
+    jsonText = draftW ? JSON.stringify(draftW, null, 2) : "";
+    jsonError = "";
+    dirty = false;
   }
 
-  // Dirty guard: refresh the draft from the spec only when the user isn't mid-edit, so an
-  // incoming SSE update (or our own commit) re-normalises the JSON without clobbering typing.
+  // Dirty guard: when not mid-edit, refresh the draft from the spec so external/committed
+  // changes re-normalise it without clobbering active editing.
   $effect(() => {
-    if (!selectedWidgetId || draftDirty) return;
+    if (!selectedWidgetId || dirty) return;
     const w = spec.widgets.find((x) => x.id === selectedWidgetId);
-    if (w) draft = JSON.stringify($state.snapshot(w), null, 2);
+    if (w) {
+      draftW = structuredClone($state.snapshot(w));
+      jsonText = JSON.stringify(draftW, null, 2);
+    }
   });
 
-  function onDraftInput(v: string) {
-    draft = v;
-    draftDirty = true;
+  // Visual edits mutate draftW in place → reflect into the JSON view.
+  function syncJson() {
+    jsonText = JSON.stringify(draftW, null, 2);
+    jsonError = "";
+    dirty = true;
+  }
+
+  // JSON edits parse back into draftW (on valid) → reflect into the visual editor + preview.
+  function onJsonInput(v: string) {
+    jsonText = v;
+    dirty = true;
     try {
-      JSON.parse(v);
-      draftError = "";
+      const p = JSON.parse(v);
+      if (selectedWidgetId) p.id = selectedWidgetId;
+      draftW = p;
+      jsonError = "";
     } catch (e) {
-      draftError = "Invalid JSON: " + (e as Error).message;
+      jsonError = "Invalid JSON: " + (e as Error).message;
     }
   }
 
-  async function applyDraft() {
-    let parsed: any;
-    try {
-      parsed = JSON.parse(draft);
-    } catch (e) {
-      draftError = String(e);
-      return;
-    }
+  async function saveDraft() {
+    if (jsonError || !draftW) return;
     const next: Spec = structuredClone($state.snapshot(spec));
     const idx = next.widgets.findIndex((w) => w.id === selectedWidgetId);
-    if (idx < 0) {
-      draftError = "widget not found";
-      return;
-    }
-    parsed.id = selectedWidgetId; // keep the handle stable
-    next.widgets[idx] = parsed;
+    if (idx < 0) return;
+    draftW.id = selectedWidgetId;
+    next.widgets[idx] = structuredClone($state.snapshot(draftW));
     try {
-      await save(next); // server validates (incl. composed schema); error surfaces below
-      draftDirty = false;
-      draftError = "";
+      await save(next); // server validates (incl. composed schema)
+      dirty = false;
+      jsonError = "";
     } catch (e) {
-      draftError = String(e);
+      jsonError = String(e);
     }
   }
 
-  function revertDraft() {
+  function discardDraft() {
     if (selectedWidgetId) selectWidget(selectedWidgetId);
   }
 
@@ -227,14 +233,15 @@
     save(next);
     if (selectedWidgetId === id) {
       selectedWidgetId = null;
-      draft = "";
+      draftW = null;
+      jsonText = "";
     }
   }
 
-  // --- Composer: data source + field introspection (for composed widgets) ---
+  // --- Composer: data source + field introspection (reads the DRAFT) ---
   const composedSource = $derived(
-    selectedWidget?.type === "composed"
-      ? (selectedWidget.options?.source as ComposedSource | undefined)
+    draftW?.type === "composed"
+      ? (draftW.options?.source as ComposedSource | undefined)
       : undefined,
   );
   const liveSample = $derived(composedSource ? resolveSource(composedSource) : undefined);
@@ -243,27 +250,20 @@
   const resourceId = $derived(
     composedSource?.kind === "resource" ? (composedSource.resource ?? "").split("|")[0] : "",
   );
-  const resourceKinds = ["service.status"]; // extends as connectors expose more
 
   function updateSource(source: ComposedSource) {
-    if (!selectedWidgetId) return;
-    const next: Spec = structuredClone($state.snapshot(spec));
-    const w = next.widgets.find((x) => x.id === selectedWidgetId);
-    if (!w) return;
-    w.options = { ...(w.options ?? {}), source };
-    save(next);
+    if (!draftW) return;
+    draftW.options = { ...(draftW.options ?? {}), source };
+    syncJson();
   }
-
   function setSourceKind(kind: string) {
     if (kind === "resource") updateSource({ kind: "resource", resource: "" });
     else if (kind === "static") updateSource({ kind: "static", data: {} });
     else updateSource({ kind: kind as ComposedSource["kind"] });
   }
-
   function setResource(id: string) {
     updateSource({ kind: "resource", resource: `${id}|service.status` });
   }
-
   function copyPath(p: string) {
     try {
       navigator.clipboard?.writeText(p);
@@ -370,8 +370,8 @@
         </ul>
         <button class="ghost" onclick={addComposed}>＋ Add composed widget</button>
 
-        {#if selectedWidget}
-          {#if selectedWidget.type === "composed"}
+        {#if draftW}
+          {#if draftW.type === "composed"}
             <h3>Data source</h3>
             <div class="seg">
               {#each ["resource", "host", "services", "static"] as k}
@@ -382,10 +382,20 @@
               <select class="src-select" value={resourceId} onchange={(e) => setResource(e.currentTarget.value)}>
                 <option value="" disabled selected={resourceId === ""}>Choose a service…</option>
                 {#each registry.list as it (it.id)}
-                  <option value={it.id}>{it.name} ({resourceKinds[0]})</option>
+                  <option value={it.id}>{it.name} (service.status)</option>
                 {/each}
               </select>
             {/if}
+
+            <h3>Preview <span class="kicker">draft · saved on Save</span></h3>
+            <div class="preview">
+              <Composed widget={draftW} />
+            </div>
+
+            <h3>Build <span class="kicker">primitives</span></h3>
+            {#key selectedWidgetId}
+              <TreeEditor root={draftW.options.view} {fields} onChange={syncJson} />
+            {/key}
 
             <h3>Available fields <span class="kicker">click to copy a path</span></h3>
             {#if fields.length}
@@ -396,33 +406,29 @@
                   </button>
                 {/each}
               </div>
-            {:else}
-              <p class="hint">No fields — pick a source (and add a service for “resource”).</p>
             {/if}
           {/if}
 
-          <h3>Edit as JSON <span class="kicker">live · no config files</span></h3>
+          <h3>Edit as JSON <span class="kicker">round-trips with the editor</span></h3>
           <textarea
             class="jsoned"
-            value={draft}
-            oninput={(e) => onDraftInput(e.currentTarget.value)}
+            value={jsonText}
+            oninput={(e) => onJsonInput(e.currentTarget.value)}
             spellcheck="false"
           ></textarea>
-          {#if draftError}
-            <p class="testres">{draftError}</p>
+          {#if jsonError}
+            <p class="testres">{jsonError}</p>
+          {:else if dirty}
+            <p class="testres ok">valid · unsaved changes</p>
           {:else}
-            <p class="testres ok">valid JSON</p>
+            <p class="testres">saved</p>
           {/if}
           <div class="actions">
-            <button class="primary" onclick={applyDraft} disabled={!!draftError}>Apply</button>
-            <button class="ghost" onclick={revertDraft}>Revert</button>
+            <button class="primary" onclick={saveDraft} disabled={!!jsonError || !dirty}>Save</button>
+            <button class="ghost" onclick={discardDraft} disabled={!dirty}>Discard</button>
           </div>
-          <p class="hint">
-            Edit the widget's declarative spec directly — the dashboard follows on Apply. The
-            GUI and this JSON are the same state.
-          </p>
         {:else}
-          <p class="hint">Select a widget to edit its JSON, or add a composed one.</p>
+          <p class="hint">Select a widget to edit, or add a composed one.</p>
         {/if}
       {:else if active === "Integrations"}
         <h3>Your services</h3>
@@ -901,6 +907,12 @@
   }
   .jsoned:focus {
     border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  }
+  .preview {
+    border: 1px dashed var(--card-border);
+    border-radius: 12px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.12);
   }
   .src-select {
     width: 100%;

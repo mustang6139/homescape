@@ -35,7 +35,12 @@
         "fmt": { "enum": ["ms", "percent", "bytes", "duration", "round", "relTime", "text"] },
         "map": {
           "type": "object",
-          "description": "static value→string lookup (e.g. bool → icon/color token)",
+          "description": "static value→string lookup (e.g. bool → icon name or display text)",
+          "additionalProperties": { "type": "string" }
+        },
+        "colorMap": {
+          "type": "object",
+          "description": "static value→color-token lookup, overrides style.color by the bound value",
           "additionalProperties": { "type": "string" }
         },
         "of": { "type": "string", "description": "for el=list: dot-path to a collection field" },

@@ -2,7 +2,7 @@
   import Self from "./Node.svelte";
   import { getPath, lookupMap, toNumber } from "../../lib/compose/resolve";
   import { formatValue, type Fmt } from "../../lib/compose/format";
-  import { styleToCss, iconGlyph } from "../../lib/compose/tokens";
+  import { styleToCss, iconGlyph, colorVar } from "../../lib/compose/tokens";
 
   // A single view-tree node, rendered against the current data scope. Recursive.
   interface ViewNode {
@@ -12,6 +12,7 @@
     text?: string;
     fmt?: Fmt;
     map?: Record<string, string>;
+    colorMap?: Record<string, string>;
     of?: string;
     item?: ViewNode;
     value?: string | number;
@@ -23,6 +24,16 @@
   let { node, data }: { node: ViewNode; data: unknown } = $props();
 
   const css = $derived(styleToCss(node.style));
+
+  // colorMap overrides the static colour based on the bound value (sandboxed lookup).
+  const leafCss = $derived.by(() => {
+    if (node.colorMap && node.bind != null) {
+      const tok = lookupMap(getPath(data, node.bind), node.colorMap);
+      const c = colorVar(tok);
+      if (c) return `${css};color:${c}`;
+    }
+    return css;
+  });
 
   // Resolve a leaf's display string: literal text, else mapped value, else formatted value.
   function leafText(n: ViewNode, d: unknown): string {
@@ -60,11 +71,11 @@
     {/each}
   </div>
 {:else if node.el === "text"}
-  <span style={css}>{leafText(node, data)}</span>
+  <span style={leafCss}>{leafText(node, data)}</span>
 {:else if node.el === "badge"}
-  <span class="hs-badge" style={css}>{leafText(node, data)}</span>
+  <span class="hs-badge" style={leafCss}>{leafText(node, data)}</span>
 {:else if node.el === "icon"}
-  <span class="hs-icon" style={css}>{iconGlyph(leafText(node, data))}</span>
+  <span class="hs-icon" style={leafCss}>{iconGlyph(leafText(node, data))}</span>
 {:else if node.el === "bar"}
   <div class="hs-bar"><i style="width:{barPct}%;{css}"></i></div>
 {:else if node.el === "link"}
