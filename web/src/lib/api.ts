@@ -21,7 +21,7 @@ export async function putScape(spec: Spec): Promise<Spec> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(spec),
   });
-  if (!res.ok) throw new Error(`PUT /api/scape: ${res.status}`);
+  if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }
 

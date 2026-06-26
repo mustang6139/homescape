@@ -5,7 +5,8 @@ export type WidgetType =
   | "service-health"
   | "clock"
   | "bookmarks"
-  | "media-now-playing";
+  | "media-now-playing"
+  | "composed";
 
 export interface Widget {
   id: string;

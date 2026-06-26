@@ -138,6 +138,96 @@
     await hideDiscovered(id);
     await loadRegistry();
   }
+
+  // --- Widgets / L3 escape hatch (edit a widget as JSON) ---
+  let selectedWidgetId = $state<string | null>(null);
+  let draft = $state("");
+  let draftDirty = $state(false);
+  let draftError = $state("");
+
+  const selectedWidget = $derived(spec.widgets.find((w) => w.id === selectedWidgetId) ?? null);
+
+  function selectWidget(id: string) {
+    selectedWidgetId = id;
+    const w = spec.widgets.find((x) => x.id === id);
+    draft = w ? JSON.stringify($state.snapshot(w), null, 2) : "";
+    draftDirty = false;
+    draftError = "";
+  }
+
+  // Dirty guard: refresh the draft from the spec only when the user isn't mid-edit, so an
+  // incoming SSE update (or our own commit) re-normalises the JSON without clobbering typing.
+  $effect(() => {
+    if (!selectedWidgetId || draftDirty) return;
+    const w = spec.widgets.find((x) => x.id === selectedWidgetId);
+    if (w) draft = JSON.stringify($state.snapshot(w), null, 2);
+  });
+
+  function onDraftInput(v: string) {
+    draft = v;
+    draftDirty = true;
+    try {
+      JSON.parse(v);
+      draftError = "";
+    } catch (e) {
+      draftError = "Invalid JSON: " + (e as Error).message;
+    }
+  }
+
+  async function applyDraft() {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(draft);
+    } catch (e) {
+      draftError = String(e);
+      return;
+    }
+    const next: Spec = structuredClone($state.snapshot(spec));
+    const idx = next.widgets.findIndex((w) => w.id === selectedWidgetId);
+    if (idx < 0) {
+      draftError = "widget not found";
+      return;
+    }
+    parsed.id = selectedWidgetId; // keep the handle stable
+    next.widgets[idx] = parsed;
+    try {
+      await save(next); // server validates (incl. composed schema); error surfaces below
+      draftDirty = false;
+      draftError = "";
+    } catch (e) {
+      draftError = String(e);
+    }
+  }
+
+  function revertDraft() {
+    if (selectedWidgetId) selectWidget(selectedWidgetId);
+  }
+
+  function addComposed() {
+    const id = "composed-" + Math.random().toString(36).slice(2, 7);
+    const next: Spec = structuredClone($state.snapshot(spec));
+    next.widgets.push({
+      id,
+      type: "composed",
+      column: 0,
+      title: "New widget",
+      options: {
+        source: { kind: "host" },
+        view: { el: "stack", children: [{ el: "text", text: "Hello" }] },
+      },
+    });
+    save(next).then(() => selectWidget(id));
+  }
+
+  function removeWidget(id: string) {
+    const next: Spec = structuredClone($state.snapshot(spec));
+    next.widgets = next.widgets.filter((w) => w.id !== id);
+    save(next);
+    if (selectedWidgetId === id) {
+      selectedWidgetId = null;
+      draft = "";
+    }
+  }
 </script>
 
 <aside class="drawer">
@@ -222,6 +312,45 @@
             </div>
           {/each}
         </div>
+      {:else if active === "Widgets"}
+        <h3>Widgets</h3>
+        <ul class="ilist">
+          {#each spec.widgets as w (w.id)}
+            <li>
+              <button class="wsel" class:sel={selectedWidgetId === w.id} onclick={() => selectWidget(w.id)}>
+                <span class="iname">{w.title ?? w.type}</span>
+                <span class="ibadge">{w.type}</span>
+              </button>
+              <button class="del" onclick={() => removeWidget(w.id)} aria-label="Delete">✕</button>
+            </li>
+          {/each}
+        </ul>
+        <button class="ghost" onclick={addComposed}>＋ Add composed widget</button>
+
+        {#if selectedWidget}
+          <h3>Edit as JSON <span class="kicker">live · no config files</span></h3>
+          <textarea
+            class="jsoned"
+            value={draft}
+            oninput={(e) => onDraftInput(e.currentTarget.value)}
+            spellcheck="false"
+          ></textarea>
+          {#if draftError}
+            <p class="testres">{draftError}</p>
+          {:else}
+            <p class="testres ok">valid JSON</p>
+          {/if}
+          <div class="actions">
+            <button class="primary" onclick={applyDraft} disabled={!!draftError}>Apply</button>
+            <button class="ghost" onclick={revertDraft}>Revert</button>
+          </div>
+          <p class="hint">
+            Edit the widget's declarative spec directly — the dashboard follows on Apply. The
+            GUI and this JSON are the same state.
+          </p>
+        {:else}
+          <p class="hint">Select a widget to edit its JSON, or add a composed one.</p>
+        {/if}
       {:else if active === "Integrations"}
         <h3>Your services</h3>
         {#if registry.list.length === 0}
@@ -663,5 +792,41 @@
     border: 1px solid var(--card-border);
     border-radius: 5px;
     padding: 1px 5px;
+  }
+  .wsel {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    color: var(--ink);
+    cursor: pointer;
+    text-align: left;
+    padding: 0;
+  }
+  .wsel.sel .iname {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .jsoned {
+    width: 100%;
+    min-height: 240px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 12px;
+    color: var(--ink);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    white-space: pre;
+    tab-size: 2;
+  }
+  .jsoned:focus {
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
   }
 </style>
